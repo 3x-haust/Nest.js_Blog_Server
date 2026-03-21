@@ -336,6 +336,41 @@ export class BlogService {
     return this.commentRepository.save(reply);
   }
 
+  async updateComment(
+    slug: string,
+    commentId: string,
+    content: string,
+  ): Promise<CommentEntity> {
+    const post = await this.findPostBySlug(slug);
+    const comment = await this.commentRepository.findOne({
+      where: { id: commentId, postId: post.id },
+    });
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    comment.content = content;
+    comment.edited = true;
+    return this.commentRepository.save(comment);
+  }
+
+  async deleteComment(slug: string, commentId: string): Promise<void> {
+    const post = await this.findPostBySlug(slug);
+    const comment = await this.commentRepository.findOne({
+      where: { id: commentId, postId: post.id },
+    });
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    await this.commentRepository.delete([
+      { id: comment.id, postId: post.id },
+      { parentId: comment.id, postId: post.id },
+    ]);
+  }
+
   private async indexPost(post: PostEntity): Promise<void> {
     try {
       await this.elasticsearchService.index({

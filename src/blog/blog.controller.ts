@@ -27,6 +27,7 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateHeartDto } from './dto/create-heart.dto';
+import { UpdateCommentDto } from './dto/update-comment.dto';
 import { AdminAuthGuard } from '../auth/admin-auth.guard';
 
 type UploadFile = {
@@ -156,6 +157,28 @@ export class BlogController {
       content,
       request.admin?.nickname,
     );
+  }
+
+  @Patch('posts/:slug/comments/:commentId')
+  @UseGuards(AdminAuthGuard)
+  @SuccessMessage('Comment updated')
+  updateComment(
+    @Param('slug') slug: string,
+    @Param('commentId') commentId: string,
+    @Body() body: UpdateCommentDto,
+  ) {
+    return this.blogService.updateComment(slug, commentId, body.content);
+  }
+
+  @Delete('posts/:slug/comments/:commentId')
+  @UseGuards(AdminAuthGuard)
+  @SuccessMessage('Comment deleted')
+  async deleteComment(
+    @Param('slug') slug: string,
+    @Param('commentId') commentId: string,
+  ) {
+    await this.blogService.deleteComment(slug, commentId);
+    return true;
   }
 
   @Get('tags')

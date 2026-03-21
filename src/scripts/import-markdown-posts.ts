@@ -166,7 +166,8 @@ const parseFenceMetadata = (
   const parts = info.split(/\s+/).filter(Boolean);
   const first = parts[0] ?? 'text';
 
-  let type: 'code' | 'interactive' = first === 'interactive' ? 'interactive' : 'code';
+  let type: 'code' | 'interactive' =
+    first === 'interactive' ? 'interactive' : 'code';
   let language = 'text';
   let editable: boolean | 'restricted' | undefined;
   let editableLines: number[] | undefined;
@@ -463,7 +464,8 @@ async function run() {
     const raw = await fs.readFile(file, 'utf-8');
     const { frontmatter, body } = parseFrontmatter(raw);
     const fallbackTitle = basename(file, extname(file)).replace(/[-_]/g, ' ');
-    const title = frontmatter.title ?? readTitleFromMarkdown(body, fallbackTitle);
+    const title =
+      frontmatter.title ?? readTitleFromMarkdown(body, fallbackTitle);
     const slug = frontmatter.slug ?? toSlug(basename(file, extname(file)));
     const tags = frontmatter.tags?.length ? frontmatter.tags : [defaultTag];
     const blocks = buildBlocks(body);
