@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -17,6 +18,7 @@ import {
 import { SuccessMessage } from '@3xhaust/nest-response';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { randomUUID } from 'crypto';
+import { Request } from 'express';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import * as sharp from 'sharp';
@@ -30,6 +32,13 @@ import { AdminAuthGuard } from '../auth/admin-auth.guard';
 type UploadFile = {
   mimetype: string;
   buffer: Buffer;
+};
+
+type AdminRequest = Request & {
+  admin?: {
+    sub: string;
+    nickname: string;
+  };
 };
 
 const isUploadFile = (value: unknown): value is UploadFile => {
@@ -139,8 +148,14 @@ export class BlogController {
     @Param('slug') slug: string,
     @Param('commentId') commentId: string,
     @Body('content') content: string,
+    @Req() request: AdminRequest,
   ) {
-    return this.blogService.createAdminReply(slug, commentId, content);
+    return this.blogService.createAdminReply(
+      slug,
+      commentId,
+      content,
+      request.admin?.nickname,
+    );
   }
 
   @Get('tags')

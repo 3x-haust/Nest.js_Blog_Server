@@ -305,7 +305,12 @@ export class BlogService {
     return this.commentRepository.save(comment);
   }
 
-  async createAdminReply(slug: string, commentId: string, content: string) {
+  async createAdminReply(
+    slug: string,
+    commentId: string,
+    content: string,
+    adminNickname?: string,
+  ) {
     const post = await this.findPostBySlug(slug);
 
     const parent = await this.commentRepository.findOne({
@@ -316,10 +321,12 @@ export class BlogService {
       throw new NotFoundException('Comment not found');
     }
 
+    const resolvedAdminNickname = adminNickname?.trim() || 'admin';
+
     const reply = this.commentRepository.create({
       postId: post.id,
-      nickname: 'admin',
-      avatarSeed: 'admin',
+      nickname: resolvedAdminNickname,
+      avatarSeed: resolvedAdminNickname,
       content,
       parentId: parent.id,
       isAdminReply: true,
