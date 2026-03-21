@@ -1,0 +1,528 @@
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { ElasticsearchService } from '@nestjs/elasticsearch';
+import { Cron } from '@nestjs/schedule';
+import { promises as fs } from 'fs';
+import { join } from 'path';
+import { Repository } from 'typeorm';
+import { PostEntity } from './entities/post.entity';
+import { CommentEntity } from './entities/comment.entity';
+import { HeartEntity } from './entities/heart.entity';
+import { ImageEntity } from './entities/image.entity';
+import { CreatePostDto } from './dto/create-post.dto';
+import { UpdatePostDto } from './dto/update-post.dto';
+import { CreateCommentDto } from './dto/create-comment.dto';
+
+@Injectable()
+export class BlogService {
+  private readonly indexName = 'blog_posts';
+  private readonly seriesTagPrefix = 'series:';
+  private readonly logger = new Logger(BlogService.name);
+  private readonly uploadPrefix = '/uploads/images/';
+
+  constructor(
+    @InjectRepository(PostEntity)
+    private readonly postRepository: Repository<PostEntity>,
+    @InjectRepository(CommentEntity)
+    private readonly commentRepository: Repository<CommentEntity>,
+    @InjectRepository(HeartEntity)
+    private readonly heartRepository: Repository<HeartEntity>,
+    @InjectRepository(ImageEntity)
+    private readonly imageRepository: Repository<ImageEntity>,
+    private readonly elasticsearchService: ElasticsearchService,
+  ) {}
+
+  async trackUploadedImage(url: string, mimeType: string): Promise<void> {
+    if (!this.isManagedImageUrl(url)) {
+      return;
+    }
+
+    const filename = this.extractFilename(url);
+    if (!filename) {
+      return;
+    }
+
+    const existing = await this.imageRepository.findOne({ where: { url } });
+    if (existing) {
+      return;
+    }
+
+    const image = this.imageRepository.create({ url, filename, mimeType });
+    await this.imageRepository.save(image);
+  }
+
+  @Cron('0 30 3 * * *')
+  async cleanupUnusedImages(): Promise<void> {
+    const graceHours = Number(process.env.IMAGE_CLEANUP_GRACE_HOURS ?? 24);
+    const safeGraceHours = Number.isFinite(graceHours)
+      ? Math.max(1, graceHours)
+      : 24;
+    const threshold = new Date(Date.now() - safeGraceHours * 60 * 60 * 1000);
+
+    const referencedUrls = await this.collectReferencedImageUrls();
+    const images = await this.imageRepository.find();
+    const targets = images.filter(
+      (image) =>
+        !referencedUrls.has(image.url) &&
+        image.createdAt.getTime() < threshold.getTime(),
+    );
+
+    if (!targets.length) {
+      return;
+    }
+
+    let deletedCount = 0;
+    for (const image of targets) {
+      const removed = await this.removeImageFile(image.url);
+      if (!removed) {
+        continue;
+      }
+
+      await this.imageRepository.delete({ id: image.id });
+      deletedCount += 1;
+    }
+
+    if (deletedCount > 0) {
+      this.logger.log(`Cleaned ${deletedCount} unused image(s)`);
+    }
+  }
+
+  async findPosts(query?: string, tag?: string): Promise<PostEntity[]> {
+    if (query?.trim()) {
+      const elasticResult = await this.searchByElastic(query.trim(), tag);
+      if (elasticResult) {
+        return elasticResult;
+      }
+    }
+
+    const allPosts = await this.postRepository.find({
+      order: { createdAt: 'DESC' },
+    });
+
+    return allPosts.filter((post) => {
+      const byTag = tag?.trim() ? post.tags.includes(tag.trim()) : true;
+      const byQuery = query?.trim()
+        ? [post.title, ...post.tags, this.getPlainText(post.content)]
+            .join(' ')
+            .toLowerCase()
+            .includes(query.trim().toLowerCase())
+        : true;
+      return byTag && byQuery;
+    });
+  }
+
+  async findTagSummary() {
+    const posts = await this.postRepository.find({ select: ['tags'] });
+    const counts = new Map<string, number>();
+
+    posts.forEach((post) => {
+      post.tags.forEach((tag) => {
+        if (this.isSeriesTag(tag)) {
+          return;
+        }
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      });
+    });
+
+    return [...counts.entries()]
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  }
+
+  async findPostBySlug(slug: string): Promise<PostEntity> {
+    const post = await this.postRepository.findOne({ where: { slug } });
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+    return post;
+  }
+
+  async findRelatedPosts(slug: string, limit = 3) {
+    const current = await this.findPostBySlug(slug);
+    const all = await this.postRepository.find();
+
+    return all
+      .filter((post) => post.slug !== current.slug)
+      .map((post) => ({
+        post,
+        score: post.tags.filter((tag) => current.tags.includes(tag)).length,
+      }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((item) => item.post);
+  }
+
+  async findSeriesPosts(slug: string) {
+    const current = await this.findPostBySlug(slug);
+    const seriesTag = current.tags.find((tag) => this.isSeriesTag(tag));
+
+    if (!seriesTag) {
+      return { series: null, posts: [] };
+    }
+
+    const series = seriesTag.slice(this.seriesTagPrefix.length).trim();
+    const allPosts = await this.postRepository.find({
+      order: { createdAt: 'ASC' },
+    });
+    const posts = allPosts.filter((post) => post.tags.includes(seriesTag));
+
+    return { series, posts };
+  }
+
+  async createPost(payload: CreatePostDto): Promise<PostEntity> {
+    const exists = await this.postRepository.findOne({
+      where: { slug: payload.slug },
+    });
+    if (exists) {
+      throw new BadRequestException('Slug already exists');
+    }
+
+    const post = this.postRepository.create({
+      slug: payload.slug,
+      title: payload.title,
+      thumbnail: payload.thumbnail ?? null,
+      tags: payload.tags,
+      content: payload.content,
+      views: payload.views ?? 0,
+      readingTime: payload.readingTime ?? 1,
+    });
+
+    const saved = await this.postRepository.save(post);
+    await this.ensureReferencedImagesTracked(saved);
+    void this.indexPost(saved);
+    return saved;
+  }
+
+  async updatePost(slug: string, payload: UpdatePostDto): Promise<PostEntity> {
+    const post = await this.findPostBySlug(slug);
+
+    Object.assign(post, {
+      ...payload,
+      thumbnail:
+        payload.thumbnail === undefined
+          ? post.thumbnail
+          : ((payload.thumbnail as string | null) ?? null),
+    });
+
+    const updated = await this.postRepository.save(post);
+    await this.ensureReferencedImagesTracked(updated);
+    void this.indexPost(updated);
+    return updated;
+  }
+
+  async deletePost(slug: string): Promise<void> {
+    const post = await this.findPostBySlug(slug);
+    await this.postRepository.delete({ id: post.id });
+
+    try {
+      await this.elasticsearchService.delete({
+        index: this.indexName,
+        id: post.id,
+      });
+    } catch {
+      return;
+    }
+  }
+
+  async incrementView(slug: string): Promise<void> {
+    const post = await this.findPostBySlug(slug);
+    post.views += 1;
+    await this.postRepository.save(post);
+  }
+
+  async addHeart(
+    slug: string,
+    clientId: string,
+  ): Promise<{ heartCount: number; liked: boolean }> {
+    const post = await this.findPostBySlug(slug);
+
+    const existing = await this.heartRepository.findOne({
+      where: { postId: post.id, clientId },
+    });
+
+    if (existing) {
+      return { heartCount: post.heartCount, liked: true };
+    }
+
+    const heart = this.heartRepository.create({ postId: post.id, clientId });
+    await this.heartRepository.save(heart);
+
+    post.heartCount += 1;
+    await this.postRepository.save(post);
+
+    return { heartCount: post.heartCount, liked: true };
+  }
+
+  async hasHeart(
+    slug: string,
+    clientId: string,
+  ): Promise<{ liked: boolean; heartCount: number }> {
+    const post = await this.findPostBySlug(slug);
+    const existing = await this.heartRepository.findOne({
+      where: { postId: post.id, clientId },
+    });
+
+    return { liked: Boolean(existing), heartCount: post.heartCount };
+  }
+
+  async findComments(slug: string) {
+    const post = await this.findPostBySlug(slug);
+    const comments = await this.commentRepository.find({
+      where: { postId: post.id },
+      order: { createdAt: 'ASC' },
+    });
+
+    const roots = comments.filter((comment) => !comment.parentId);
+
+    return roots.map((comment) => ({
+      ...comment,
+      replies: comments.filter((reply) => reply.parentId === comment.id),
+    }));
+  }
+
+  async createComment(slug: string, payload: CreateCommentDto) {
+    const post = await this.findPostBySlug(slug);
+
+    const comment = this.commentRepository.create({
+      postId: post.id,
+      nickname: payload.nickname,
+      avatarSeed: payload.avatarSeed ?? payload.nickname,
+      content: payload.content,
+      parentId: null,
+      isAdminReply: false,
+      edited: false,
+    });
+
+    return this.commentRepository.save(comment);
+  }
+
+  async createAdminReply(slug: string, commentId: string, content: string) {
+    const post = await this.findPostBySlug(slug);
+
+    const parent = await this.commentRepository.findOne({
+      where: { id: commentId, postId: post.id },
+    });
+
+    if (!parent) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    const reply = this.commentRepository.create({
+      postId: post.id,
+      nickname: 'admin',
+      avatarSeed: 'admin',
+      content,
+      parentId: parent.id,
+      isAdminReply: true,
+      edited: false,
+    });
+
+    return this.commentRepository.save(reply);
+  }
+
+  private async indexPost(post: PostEntity): Promise<void> {
+    try {
+      await this.elasticsearchService.index({
+        index: this.indexName,
+        id: post.id,
+        document: {
+          slug: post.slug,
+          title: post.title,
+          tags: post.tags,
+          plainText: this.getPlainText(post.content),
+          createdAt: post.createdAt,
+        },
+      });
+    } catch {
+      return;
+    }
+  }
+
+  private async searchByElastic(
+    query: string,
+    tag?: string,
+  ): Promise<PostEntity[] | null> {
+    try {
+      const result = await this.elasticsearchService.search<{ slug: string }>({
+        index: this.indexName,
+        query: {
+          bool: {
+            must: [
+              {
+                multi_match: {
+                  query,
+                  fields: ['title^3', 'tags^2', 'plainText'],
+                },
+              },
+            ],
+            filter: tag?.trim() ? [{ term: { tags: tag.trim() } }] : undefined,
+          },
+        },
+      });
+
+      const slugs = result.hits.hits
+        .map((hit) => hit._source?.slug)
+        .filter((value): value is string => Boolean(value));
+
+      if (!slugs.length) {
+        return [];
+      }
+
+      const posts = await this.postRepository.find({
+        where: slugs.map((slug) => ({ slug })),
+      });
+      return slugs
+        .map((slug) => posts.find((post) => post.slug === slug))
+        .filter((post): post is PostEntity => Boolean(post));
+    } catch {
+      return null;
+    }
+  }
+
+  private getPlainText(content: unknown[]): string {
+    if (!Array.isArray(content)) {
+      return '';
+    }
+
+    return content
+      .map((block) => {
+        if (typeof block === 'object' && block !== null && 'content' in block) {
+          const value = (block as { content?: unknown }).content;
+          return typeof value === 'string' ? value : '';
+        }
+        return '';
+      })
+      .join(' ')
+      .trim();
+  }
+
+  private isSeriesTag(tag: string): boolean {
+    return tag.toLowerCase().startsWith(this.seriesTagPrefix);
+  }
+
+  private async collectReferencedImageUrls(): Promise<Set<string>> {
+    const posts = await this.postRepository.find({
+      select: ['thumbnail', 'content'],
+    });
+
+    const urls = new Set<string>();
+
+    posts.forEach((post) => {
+      const extracted = this.extractImageUrlsFromPost(
+        post.thumbnail,
+        post.content,
+      );
+      extracted.forEach((url) => urls.add(url));
+    });
+
+    return urls;
+  }
+
+  private extractImageUrlsFromPost(
+    thumbnail: string | null,
+    content: unknown,
+  ): Set<string> {
+    const urls = new Set<string>();
+
+    if (thumbnail && this.isManagedImageUrl(thumbnail)) {
+      urls.add(thumbnail);
+    }
+
+    this.walkForImageUrls(content, urls);
+
+    return urls;
+  }
+
+  private walkForImageUrls(value: unknown, urls: Set<string>): void {
+    if (typeof value === 'string') {
+      if (this.isManagedImageUrl(value)) {
+        urls.add(value);
+      }
+      this.extractMarkdownImageUrls(value).forEach((url) => urls.add(url));
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => this.walkForImageUrls(item, urls));
+      return;
+    }
+
+    if (value && typeof value === 'object') {
+      Object.values(value).forEach((item) => this.walkForImageUrls(item, urls));
+    }
+  }
+
+  private extractMarkdownImageUrls(text: string): string[] {
+    const matches = text.matchAll(
+      /!\[[^\]]*\]\((\/uploads\/images\/[^)\s]+)\)/g,
+    );
+    return [...matches].map((match) => match[1]);
+  }
+
+  private isManagedImageUrl(url: string): boolean {
+    return url.startsWith(this.uploadPrefix);
+  }
+
+  private extractFilename(url: string): string | null {
+    if (!this.isManagedImageUrl(url)) {
+      return null;
+    }
+    return url.slice(this.uploadPrefix.length).trim() || null;
+  }
+
+  private async ensureReferencedImagesTracked(post: PostEntity): Promise<void> {
+    const referencedUrls = this.extractImageUrlsFromPost(
+      post.thumbnail,
+      post.content,
+    );
+    if (!referencedUrls.size) {
+      return;
+    }
+
+    for (const url of referencedUrls) {
+      const filename = this.extractFilename(url);
+      if (!filename) {
+        continue;
+      }
+
+      const existing = await this.imageRepository.findOne({ where: { url } });
+      if (existing) {
+        continue;
+      }
+
+      const image = this.imageRepository.create({
+        url,
+        filename,
+        mimeType: 'image/webp',
+      });
+      await this.imageRepository.save(image);
+    }
+  }
+
+  private async removeImageFile(url: string): Promise<boolean> {
+    const filename = this.extractFilename(url);
+    if (!filename) {
+      return false;
+    }
+
+    const filePath = join(process.cwd(), 'uploads', 'images', filename);
+
+    try {
+      await fs.unlink(filePath);
+      return true;
+    } catch {
+      try {
+        await fs.access(filePath);
+        return false;
+      } catch {
+        return true;
+      }
+    }
+  }
+}
