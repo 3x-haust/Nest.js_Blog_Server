@@ -247,7 +247,10 @@ export class BlogService {
     });
 
     if (existing) {
-      return { heartCount: post.heartCount, liked: true };
+      await this.heartRepository.delete({ id: existing.id });
+      post.heartCount = Math.max(0, post.heartCount - 1);
+      await this.postRepository.save(post);
+      return { heartCount: post.heartCount, liked: false };
     }
 
     const heart = this.heartRepository.create({ postId: post.id, clientId });
