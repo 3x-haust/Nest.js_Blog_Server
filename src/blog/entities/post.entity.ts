@@ -38,6 +38,9 @@ export class PostEntity {
   @Column({ default: 1 })
   readingTime: number;
 
+  @Column()
+  authorId: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

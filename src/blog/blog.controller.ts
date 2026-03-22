@@ -89,22 +89,26 @@ export class BlogController {
   @Post('posts')
   @UseGuards(AdminAuthGuard)
   @SuccessMessage('Post created')
-  createPost(@Body() body: CreatePostDto) {
-    return this.blogService.createPost(body);
+  createPost(@Body() body: CreatePostDto, @Req() req: AdminRequest) {
+    return this.blogService.createPost(body, req.admin!.sub);
   }
 
   @Patch('posts/:slug')
   @UseGuards(AdminAuthGuard)
   @SuccessMessage('Post updated')
-  updatePost(@Param('slug') slug: string, @Body() body: UpdatePostDto) {
-    return this.blogService.updatePost(slug, body);
+  updatePost(
+    @Param('slug') slug: string,
+    @Body() body: UpdatePostDto,
+    @Req() req: AdminRequest,
+  ) {
+    return this.blogService.updatePost(slug, body, req.admin!.sub);
   }
 
   @Delete('posts/:slug')
   @UseGuards(AdminAuthGuard)
   @SuccessMessage('Post deleted')
-  async deletePost(@Param('slug') slug: string) {
-    await this.blogService.deletePost(slug);
+  async deletePost(@Param('slug') slug: string, @Req() req: AdminRequest) {
+    await this.blogService.deletePost(slug, req.admin!.sub);
     return true;
   }
 

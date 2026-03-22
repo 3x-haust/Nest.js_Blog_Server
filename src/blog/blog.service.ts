@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -175,7 +176,10 @@ export class BlogService {
     return { series, posts };
   }
 
-  async createPost(payload: CreatePostDto): Promise<PostEntity> {
+  async createPost(
+    payload: CreatePostDto,
+    authorId: string,
+  ): Promise<PostEntity> {
     const exists = await this.postRepository.findOne({
       where: { slug: payload.slug },
     });
@@ -191,6 +195,7 @@ export class BlogService {
       content: payload.content,
       views: payload.views ?? 0,
       readingTime: payload.readingTime ?? 1,
+      authorId,
     });
 
     const saved = await this.postRepository.save(post);
@@ -199,8 +204,16 @@ export class BlogService {
     return saved;
   }
 
-  async updatePost(slug: string, payload: UpdatePostDto): Promise<PostEntity> {
+  async updatePost(
+    slug: string,
+    payload: UpdatePostDto,
+    authorId: string,
+  ): Promise<PostEntity> {
     const post = await this.findPostBySlug(slug);
+
+    if (post.authorId !== authorId) {
+      throw new ForbiddenException('You can only edit your own posts');
+    }
 
     Object.assign(post, {
       ...payload,
@@ -216,8 +229,13 @@ export class BlogService {
     return updated;
   }
 
-  async deletePost(slug: string): Promise<void> {
+  async deletePost(slug: string, authorId: string): Promise<void> {
     const post = await this.findPostBySlug(slug);
+
+    if (post.authorId !== authorId) {
+      throw new ForbiddenException('You can only delete your own posts');
+    }
+
     await this.postRepository.delete({ id: post.id });
 
     try {
