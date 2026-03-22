@@ -211,7 +211,7 @@ export class BlogService {
   ): Promise<PostEntity> {
     const post = await this.findPostBySlug(slug);
 
-    if (post.authorId !== authorId) {
+    if (post.authorId && post.authorId !== authorId) {
       throw new ForbiddenException('You can only edit your own posts');
     }
 
@@ -221,6 +221,7 @@ export class BlogService {
         payload.thumbnail === undefined
           ? post.thumbnail
           : ((payload.thumbnail as string | null) ?? null),
+      authorId: post.authorId || authorId,
     });
 
     const updated = await this.postRepository.save(post);
@@ -232,7 +233,7 @@ export class BlogService {
   async deletePost(slug: string, authorId: string): Promise<void> {
     const post = await this.findPostBySlug(slug);
 
-    if (post.authorId !== authorId) {
+    if (post.authorId && post.authorId !== authorId) {
       throw new ForbiddenException('You can only delete your own posts');
     }
 
