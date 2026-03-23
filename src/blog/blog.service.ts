@@ -15,6 +15,7 @@ import { PostEntity } from './entities/post.entity';
 import { CommentEntity } from './entities/comment.entity';
 import { HeartEntity } from './entities/heart.entity';
 import { ImageEntity } from './entities/image.entity';
+import { DraftEntity } from './entities/draft.entity';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
@@ -35,8 +36,56 @@ export class BlogService {
     private readonly heartRepository: Repository<HeartEntity>,
     @InjectRepository(ImageEntity)
     private readonly imageRepository: Repository<ImageEntity>,
+    @InjectRepository(DraftEntity)
+    private readonly draftRepository: Repository<DraftEntity>,
     private readonly elasticsearchService: ElasticsearchService,
   ) {}
+
+  async findDrafts(): Promise<DraftEntity[]> {
+    return this.draftRepository.find({
+      order: { updatedAt: 'DESC' },
+    });
+  }
+
+  async findDraftById(id: string): Promise<DraftEntity> {
+    const draft = await this.draftRepository.findOne({ where: { id } });
+    if (!draft) {
+      throw new NotFoundException('Draft not found');
+    }
+    return draft;
+  }
+
+  async saveDraft(payload: {
+    id?: string;
+    title?: string;
+    thumbnail?: string;
+    tags?: string[];
+    content?: unknown[];
+  }): Promise<DraftEntity> {
+    const draft = payload.id
+      ? await this.draftRepository.findOne({ where: { id: payload.id } })
+      : null;
+
+    if (draft) {
+      Object.assign(draft, { ...payload });
+      return this.draftRepository.save(draft);
+    }
+
+    const newDraft = this.draftRepository.create({
+      id: payload.id ?? undefined,
+      title: payload.title ?? '',
+      thumbnail: payload.thumbnail ?? null,
+      tags: payload.tags ?? [],
+      content: payload.content ?? [],
+    });
+
+    return this.draftRepository.save(newDraft);
+  }
+
+  async deleteDraft(id: string): Promise<void> {
+    const draft = await this.findDraftById(id);
+    await this.draftRepository.delete({ id: draft.id });
+  }
 
   async trackUploadedImage(url: string, mimeType: string): Promise<void> {
     if (!this.isManagedImageUrl(url)) {

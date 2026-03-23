@@ -8,6 +8,7 @@ import { CommentEntity } from './blog/entities/comment.entity';
 import { HeartEntity } from './blog/entities/heart.entity';
 import { ImageEntity } from './blog/entities/image.entity';
 import { AdminUserEntity } from './auth/entities/admin-user.entity';
+import { DraftEntity } from './blog/entities/draft.entity';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AdminUserEntity } from './auth/entities/admin-user.entity';
         HeartEntity,
         ImageEntity,
         AdminUserEntity,
+        DraftEntity,
       ],
       synchronize: true,
       logging: false,

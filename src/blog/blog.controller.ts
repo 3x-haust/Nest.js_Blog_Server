@@ -28,6 +28,7 @@ import { UpdatePostDto } from './dto/update-post.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateHeartDto } from './dto/create-heart.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
+import { SaveDraftDto } from './dto/save-draft.dto';
 import { AdminAuthGuard } from '../auth/admin-auth.guard';
 
 type UploadFile = {
@@ -57,6 +58,35 @@ const isUploadFile = (value: unknown): value is UploadFile => {
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class BlogController {
   constructor(private readonly blogService: BlogService) {}
+
+  @Get('drafts')
+  @UseGuards(AdminAuthGuard)
+  @SuccessMessage('Drafts fetched')
+  findDrafts() {
+    return this.blogService.findDrafts();
+  }
+
+  @Get('drafts/:id')
+  @UseGuards(AdminAuthGuard)
+  @SuccessMessage('Draft fetched')
+  findDraft(@Param('id') id: string) {
+    return this.blogService.findDraftById(id);
+  }
+
+  @Post('drafts')
+  @UseGuards(AdminAuthGuard)
+  @SuccessMessage('Draft saved')
+  saveDraft(@Body() body: SaveDraftDto) {
+    return this.blogService.saveDraft(body);
+  }
+
+  @Delete('drafts/:id')
+  @UseGuards(AdminAuthGuard)
+  @SuccessMessage('Draft deleted')
+  async deleteDraft(@Param('id') id: string) {
+    await this.blogService.deleteDraft(id);
+    return true;
+  }
 
   @Get('posts')
   @SuccessMessage('Posts fetched')

@@ -7,6 +7,7 @@ import { PostEntity } from './entities/post.entity';
 import { CommentEntity } from './entities/comment.entity';
 import { HeartEntity } from './entities/heart.entity';
 import { ImageEntity } from './entities/image.entity';
+import { DraftEntity } from './entities/draft.entity';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { AuthModule } from '../auth/auth.module';
       CommentEntity,
       HeartEntity,
       ImageEntity,
+      DraftEntity,
     ]),
     ElasticsearchModule.register({
       node: process.env.ELASTICSEARCH_NODE ?? 'http://localhost:9200',
