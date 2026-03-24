@@ -29,6 +29,7 @@ import { UpdatePostDto } from './dto/update-post.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateHeartDto } from './dto/create-heart.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
+import { CreateReplyDto } from './dto/create-reply.dto';
 import { SaveDraftDto } from './dto/save-draft.dto';
 import { AdminAuthGuard } from '../auth/admin-auth.guard';
 import { OptionalAdminAuthGuard } from '../auth/optional-admin-auth.guard';
@@ -209,17 +210,18 @@ export class BlogController {
 
   @Post('posts/:slug/comments/:commentId/reply')
   @UseGuards(AdminAuthGuard)
+  @Throttle({ comment: { limit: 3, ttl: 60000 } })
   @SuccessMessage('Reply created')
   createReply(
     @Param('slug') slug: string,
     @Param('commentId') commentId: string,
-    @Body('content') content: string,
+    @Body() body: CreateReplyDto,
     @Req() request: AdminRequest,
   ) {
     return this.blogService.createAdminReply(
       slug,
       commentId,
-      content,
+      body.content,
       request.admin?.nickname,
     );
   }
