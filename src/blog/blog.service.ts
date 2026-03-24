@@ -39,7 +39,7 @@ export class BlogService {
     @InjectRepository(DraftEntity)
     private readonly draftRepository: Repository<DraftEntity>,
     private readonly elasticsearchService: ElasticsearchService,
-  ) {}
+  ) { }
 
   async findDrafts(): Promise<DraftEntity[]> {
     return this.draftRepository.find({
@@ -158,9 +158,9 @@ export class BlogService {
       const byTag = tag?.trim() ? post.tags.includes(tag.trim()) : true;
       const byQuery = query?.trim()
         ? [post.title, ...post.tags, this.getPlainText(post.content)]
-            .join(' ')
-            .toLowerCase()
-            .includes(query.trim().toLowerCase())
+          .join(' ')
+          .toLowerCase()
+          .includes(query.trim().toLowerCase())
         : true;
       return byTag && byQuery;
     });
@@ -520,11 +520,11 @@ export class BlogService {
   }
 
   private async collectReferencedImageUrls(): Promise<Set<string>> {
+    const urls = new Set<string>();
+
     const posts = await this.postRepository.find({
       select: ['thumbnail', 'content'],
     });
-
-    const urls = new Set<string>();
 
     posts.forEach((post) => {
       const extracted = this.extractImageUrlsFromPost(
@@ -532,6 +532,14 @@ export class BlogService {
         post.content,
       );
       extracted.forEach((url) => urls.add(url));
+    });
+
+    const drafts = await this.draftRepository.find({
+      select: ['content'],
+    });
+
+    drafts.forEach((draft) => {
+      this.walkForImageUrls(draft.content, urls);
     });
 
     return urls;
