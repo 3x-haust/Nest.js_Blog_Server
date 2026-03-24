@@ -449,6 +449,10 @@ export class BlogService {
       throw new NotFoundException('Comment not found');
     }
 
+    if (!comment.isAdminReply) {
+      throw new ForbiddenException('User comments cannot be edited');
+    }
+
     comment.content = content;
     comment.edited = true;
     return this.commentRepository.save(comment);

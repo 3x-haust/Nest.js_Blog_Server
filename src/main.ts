@@ -5,6 +5,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as cookieParser from 'cookie-parser';
 import { join } from 'path';
+import * as compression from 'compression';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -36,6 +37,7 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
   app.use(cookieParser());
+  app.use(compression());
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
   applyNestResponse(app);
