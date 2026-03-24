@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, Min, IsBoolean } from 'class-validator';
 
 export class UpdatePostDto {
   @IsOptional()
@@ -30,4 +30,8 @@ export class UpdatePostDto {
   @IsInt()
   @Min(1)
   readingTime?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isPublic?: boolean;
 }

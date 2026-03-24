@@ -35,6 +35,9 @@ export class PostEntity {
   @Column({ default: 0 })
   heartCount: number;
 
+  @Column({ default: true })
+  isPublic: boolean;
+
   @Column({ default: 1 })
   readingTime: number;
 

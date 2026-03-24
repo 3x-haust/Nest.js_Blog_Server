@@ -61,6 +61,7 @@ export class BlogService {
     thumbnail?: string;
     tags?: string[];
     content?: unknown[];
+    isPublic?: boolean;
   }): Promise<DraftEntity> {
     const draft = payload.id
       ? await this.draftRepository.findOne({ where: { id: payload.id } })
@@ -77,6 +78,7 @@ export class BlogService {
       thumbnail: payload.thumbnail ?? null,
       tags: payload.tags ?? [],
       content: payload.content ?? [],
+      isPublic: payload.isPublic ?? true,
     });
 
     return this.draftRepository.save(newDraft);
@@ -142,15 +144,29 @@ export class BlogService {
     }
   }
 
-  async findPosts(query?: string, tag?: string): Promise<PostEntity[]> {
+  async findPosts(
+    query?: string,
+    tag?: string,
+    isAdmin = false,
+  ): Promise<PostEntity[]> {
     if (query?.trim()) {
-      const elasticResult = await this.searchByElastic(query.trim(), tag);
+      const elasticResult = await this.searchByElastic(
+        query.trim(),
+        tag,
+        isAdmin,
+      );
       if (elasticResult) {
         return elasticResult;
       }
     }
 
+    const where: any = {};
+    if (!isAdmin) {
+      where.isPublic = true;
+    }
+
     const allPosts = await this.postRepository.find({
+      where,
       order: { createdAt: 'DESC' },
     });
 
@@ -184,16 +200,28 @@ export class BlogService {
       .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
   }
 
-  async findPostBySlug(slug: string): Promise<PostEntity> {
+  async findPostBySlug(slug: string, isAdmin = false): Promise<PostEntity> {
     const post = await this.postRepository.findOne({ where: { slug } });
     if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+    if (!isAdmin && !post.isPublic) {
       throw new NotFoundException('Post not found');
     }
     return post;
   }
 
-  async findRelatedPosts(slug: string, limit = 3) {
-    const current = await this.findPostBySlug(slug);
+  async toggleVisibility(slug: string, isPublic: boolean): Promise<PostEntity> {
+    const post = await this.postRepository.findOne({ where: { slug } });
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+    post.isPublic = isPublic;
+    return this.postRepository.save(post);
+  }
+
+  async findRelatedPosts(slug: string, limit = 3, isAdmin = false) {
+    const current = await this.findPostBySlug(slug, isAdmin);
     const all = await this.postRepository.find();
 
     return all
@@ -208,8 +236,8 @@ export class BlogService {
       .map((item) => item.post);
   }
 
-  async findSeriesPosts(slug: string) {
-    const current = await this.findPostBySlug(slug);
+  async findSeriesPosts(slug: string, isAdmin = false) {
+    const current = await this.findPostBySlug(slug, isAdmin);
     const seriesTag = current.tags.find((tag) => this.isSeriesTag(tag));
 
     if (!seriesTag) {
@@ -449,6 +477,7 @@ export class BlogService {
           title: post.title,
           tags: post.tags,
           plainText: this.getPlainText(post.content),
+          isPublic: post.isPublic,
           createdAt: post.createdAt,
         },
       });
@@ -460,6 +489,7 @@ export class BlogService {
   private async searchByElastic(
     query: string,
     tag?: string,
+    isAdmin = false,
   ): Promise<PostEntity[] | null> {
     try {
       const result = await this.elasticsearchService.search<{ slug: string }>({
@@ -474,7 +504,10 @@ export class BlogService {
                 },
               },
             ],
-            filter: tag?.trim() ? [{ term: { tags: tag.trim() } }] : undefined,
+            filter: [
+              ...(tag?.trim() ? [{ term: { tags: tag.trim() } }] : []),
+              ...(!isAdmin ? [{ term: { isPublic: true } }] : []),
+            ],
           },
         },
       });

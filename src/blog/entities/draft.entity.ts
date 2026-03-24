@@ -23,6 +23,9 @@ export class DraftEntity {
   @Column({ type: 'jsonb', default: [] })
   content: unknown[];
 
+  @Column({ default: true })
+  isPublic: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

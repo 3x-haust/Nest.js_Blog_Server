@@ -30,6 +30,7 @@ import { CreateHeartDto } from './dto/create-heart.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 import { SaveDraftDto } from './dto/save-draft.dto';
 import { AdminAuthGuard } from '../auth/admin-auth.guard';
+import { OptionalAdminAuthGuard } from '../auth/optional-admin-auth.guard';
 
 type UploadFile = {
   mimetype: string;
@@ -57,7 +58,7 @@ const isUploadFile = (value: unknown): value is UploadFile => {
 @Controller()
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class BlogController {
-  constructor(private readonly blogService: BlogService) {}
+  constructor(private readonly blogService: BlogService) { }
 
   @Get('drafts')
   @UseGuards(AdminAuthGuard)
@@ -89,15 +90,30 @@ export class BlogController {
   }
 
   @Get('posts')
+  @UseGuards(OptionalAdminAuthGuard)
   @SuccessMessage('Posts fetched')
-  findPosts(@Query('q') query?: string, @Query('tag') tag?: string) {
-    return this.blogService.findPosts(query, tag);
+  findPosts(
+    @Query('q') query?: string,
+    @Query('tag') tag?: string,
+    @Req() req?: AdminRequest,
+  ) {
+    const isAdmin = Boolean(req?.admin);
+    return this.blogService.findPosts(query, tag, isAdmin);
+  }
+
+  @Get('posts')
+  @UseGuards(AdminAuthGuard)
+  @SuccessMessage('All posts fetched (admin)')
+  findPostsAdmin(@Query('q') query?: string, @Query('tag') tag?: string) {
+    return this.blogService.findPosts(query, tag, true);
   }
 
   @Get('posts/:slug')
+  @UseGuards(OptionalAdminAuthGuard)
   @SuccessMessage('Post fetched')
-  findPost(@Param('slug') slug: string) {
-    return this.blogService.findPostBySlug(slug);
+  findPost(@Param('slug') slug: string, @Req() req?: AdminRequest) {
+    const isAdmin = Boolean(req?.admin);
+    return this.blogService.findPostBySlug(slug, isAdmin);
   }
 
   @Get('posts/:slug/related')
@@ -132,6 +148,16 @@ export class BlogController {
     @Req() req: AdminRequest,
   ) {
     return this.blogService.updatePost(slug, body, req.admin!.sub);
+  }
+
+  @Patch('posts/:slug/visibility')
+  @UseGuards(AdminAuthGuard)
+  @SuccessMessage('Post visibility updated')
+  toggleVisibility(
+    @Param('slug') slug: string,
+    @Body('isPublic') isPublic: boolean,
+  ) {
+    return this.blogService.toggleVisibility(slug, isPublic);
   }
 
   @Delete('posts/:slug')

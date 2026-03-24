@@ -20,4 +20,7 @@ export class SaveDraftDto {
   @IsArray()
   @IsOptional()
   content?: unknown[];
+
+  @IsOptional()
+  isPublic?: boolean;
 }
