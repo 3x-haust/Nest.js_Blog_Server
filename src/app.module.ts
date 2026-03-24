@@ -47,7 +47,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
       },
       {
         name: 'view',
-        ttl: 1800000, // 30 minutes
+        ttl: 1800000,
         limit: 1,
       },
       {
