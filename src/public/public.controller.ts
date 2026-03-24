@@ -14,7 +14,7 @@ export class PublicController {
     'index.html',
   );
 
-  constructor(private readonly blogService: BlogService) { }
+  constructor(private readonly blogService: BlogService) {}
 
   @Get()
   async getHome(@Res() res: Response) {
@@ -71,43 +71,6 @@ export class PublicController {
       );
       return res.sendFile(this.clientIndexPath);
     }
-  }
-
-  @Get('sitemap.xml')
-  async getSitemap(@Res() res: Response) {
-    const { posts, tags } = await this.blogService.getSitemapData();
-    const baseUrl = 'https://3xhaust.dev';
-
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>${baseUrl}/</loc>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
-${posts
-        .map(
-          (post) => `  <url>
-    <loc>${baseUrl}/posts/${post.slug}</loc>
-    <lastmod>${new Date(post.updatedAt).toISOString()}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>`,
-        )
-        .join('\n')}
-${tags
-        .map(
-          (tag) => `  <url>
-    <loc>${baseUrl}/tags/${encodeURIComponent(tag)}</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.5</priority>
-  </url>`,
-        )
-        .join('\n')}
-</urlset>`;
-
-    res.header('Content-Type', 'application/xml');
-    return res.send(xml);
   }
 
   @Get('*')

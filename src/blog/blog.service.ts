@@ -39,7 +39,7 @@ export class BlogService {
     @InjectRepository(DraftEntity)
     private readonly draftRepository: Repository<DraftEntity>,
     private readonly elasticsearchService: ElasticsearchService,
-  ) { }
+  ) {}
 
   async findDrafts(): Promise<DraftEntity[]> {
     return this.draftRepository.find({
@@ -174,9 +174,9 @@ export class BlogService {
       const byTag = tag?.trim() ? post.tags.includes(tag.trim()) : true;
       const byQuery = query?.trim()
         ? [post.title, ...post.tags, this.getPlainText(post.content)]
-          .join(' ')
-          .toLowerCase()
-          .includes(query.trim().toLowerCase())
+            .join(' ')
+            .toLowerCase()
+            .includes(query.trim().toLowerCase())
         : true;
       return byTag && byQuery;
     });
@@ -702,18 +702,5 @@ export class BlogService {
         return true;
       }
     }
-  }
-
-  async getSitemapData() {
-    const posts = await this.postRepository.find({
-      where: { isPublic: true },
-      select: ['slug', 'updatedAt'],
-      order: { updatedAt: 'DESC' },
-    });
-
-    const tagsAvailable = await this.findTagSummary();
-    const tagNames = tagsAvailable.map((t) => t.tag);
-
-    return { posts, tags: tagNames };
   }
 }
