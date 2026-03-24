@@ -201,6 +201,7 @@ export class BlogController {
   }
 
   @Post('posts/:slug/comments')
+  @Throttle({ comment: { limit: 3, ttl: 60000 } })
   @SuccessMessage('Comment created')
   createComment(@Param('slug') slug: string, @Body() body: CreateCommentDto) {
     return this.blogService.createComment(slug, body);

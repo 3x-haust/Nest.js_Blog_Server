@@ -50,6 +50,11 @@ import { ThrottlerModule } from '@nestjs/throttler';
         ttl: 1800000, // 30 minutes
         limit: 1,
       },
+      {
+        name: 'comment',
+        ttl: 60000,
+        limit: 3,
+      },
     ]),
   ],
 })
