@@ -25,7 +25,7 @@ export class AuthService implements OnModuleInit {
   private readonly accessCookieName = 'access_token';
   private readonly refreshCookieName = 'refresh_token';
   private readonly accessMaxAgeMs = Number(
-    process.env.JWT_ACCESS_MAX_AGE_MS ?? 15 * 60 * 1000,
+    process.env.JWT_ACCESS_MAX_AGE_MS ?? 60 * 60 * 1000,
   );
   private readonly refreshMaxAgeMs = Number(
     process.env.JWT_REFRESH_MAX_AGE_MS ?? 7 * 24 * 60 * 60 * 1000,

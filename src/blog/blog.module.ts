@@ -30,5 +30,6 @@ import { AuthModule } from '../auth/auth.module';
   ],
   controllers: [BlogController],
   providers: [BlogService],
+  exports: [BlogService],
 })
 export class BlogModule {}

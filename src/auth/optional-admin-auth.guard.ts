@@ -18,9 +18,7 @@ export class OptionalAdminAuthGuard implements CanActivate {
     try {
       const payload = await this.authService.verifyAdminRequest(request);
       request.admin = payload;
-    } catch {
-      // Ignore if not authenticated, req.admin will be undefined
-    }
+    } catch {}
     return true;
   }
 }

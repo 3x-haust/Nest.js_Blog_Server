@@ -11,6 +11,7 @@ import { AdminUserEntity } from './auth/entities/admin-user.entity';
 import { DraftEntity } from './blog/entities/draft.entity';
 
 import { MetadataModule } from './metadata/metadata.module';
+import { PublicModule } from './public/public.module';
 
 @Module({
   imports: [

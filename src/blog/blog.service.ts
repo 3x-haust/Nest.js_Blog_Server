@@ -183,7 +183,10 @@ export class BlogService {
   }
 
   async findTagSummary() {
-    const posts = await this.postRepository.find({ select: ['tags'] });
+    const posts = await this.postRepository.find({
+      where: { isPublic: true },
+      select: ['tags'],
+    });
     const counts = new Map<string, number>();
 
     posts.forEach((post) => {
