@@ -39,7 +39,7 @@ export class BlogService {
     @InjectRepository(DraftEntity)
     private readonly draftRepository: Repository<DraftEntity>,
     private readonly elasticsearchService: ElasticsearchService,
-  ) {}
+  ) { }
 
   async findDrafts(): Promise<DraftEntity[]> {
     return this.draftRepository.find({
@@ -174,9 +174,9 @@ export class BlogService {
       const byTag = tag?.trim() ? post.tags.includes(tag.trim()) : true;
       const byQuery = query?.trim()
         ? [post.title, ...post.tags, this.getPlainText(post.content)]
-            .join(' ')
-            .toLowerCase()
-            .includes(query.trim().toLowerCase())
+          .join(' ')
+          .toLowerCase()
+          .includes(query.trim().toLowerCase())
         : true;
       return byTag && byQuery;
     });
@@ -391,6 +391,14 @@ export class BlogService {
   async createComment(slug: string, payload: CreateCommentDto) {
     const post = await this.findPostBySlug(slug);
 
+    const existingComment = await this.commentRepository.findOne({
+      where: { postId: post.id, nickname: payload.nickname },
+    });
+
+    if (existingComment) {
+      throw new BadRequestException('이미 사용 중인 닉네임입니다.');
+    }
+
     const comment = this.commentRepository.create({
       postId: post.id,
       nickname: payload.nickname,
@@ -439,6 +447,7 @@ export class BlogService {
     slug: string,
     commentId: string,
     content: string,
+    nickname?: string,
   ): Promise<CommentEntity> {
     const post = await this.findPostBySlug(slug);
     const comment = await this.commentRepository.findOne({
@@ -451,6 +460,10 @@ export class BlogService {
 
     if (!comment.isAdminReply) {
       throw new ForbiddenException('User comments cannot be edited');
+    }
+
+    if (nickname) {
+      comment.nickname = nickname;
     }
 
     comment.content = content;
@@ -685,5 +698,18 @@ export class BlogService {
         return true;
       }
     }
+  }
+
+  async getSitemapData() {
+    const posts = await this.postRepository.find({
+      where: { isPublic: true },
+      select: ['slug', 'updatedAt'],
+      order: { updatedAt: 'DESC' },
+    });
+
+    const tagsAvailable = await this.findTagSummary();
+    const tagNames = tagsAvailable.map((t) => t.tag);
+
+    return { posts, tags: tagNames };
   }
 }

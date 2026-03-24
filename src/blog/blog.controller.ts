@@ -15,6 +15,7 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { SuccessMessage } from '@3xhaust/nest-response';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { randomUUID } from 'crypto';
@@ -31,6 +32,7 @@ import { UpdateCommentDto } from './dto/update-comment.dto';
 import { SaveDraftDto } from './dto/save-draft.dto';
 import { AdminAuthGuard } from '../auth/admin-auth.guard';
 import { OptionalAdminAuthGuard } from '../auth/optional-admin-auth.guard';
+import { ViewThrottlerGuard } from './guards/view-throttler.guard';
 
 type UploadFile = {
   mimetype: string;
@@ -58,7 +60,7 @@ const isUploadFile = (value: unknown): value is UploadFile => {
 @Controller()
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class BlogController {
-  constructor(private readonly blogService: BlogService) {}
+  constructor(private readonly blogService: BlogService) { }
 
   @Get('drafts')
   @UseGuards(AdminAuthGuard)
@@ -169,6 +171,8 @@ export class BlogController {
   }
 
   @Post('posts/:slug/view')
+  @UseGuards(ViewThrottlerGuard)
+  @Throttle({ view: { limit: 1, ttl: 1800000 } })
   @SuccessMessage('View incremented')
   async incrementView(@Param('slug') slug: string) {
     await this.blogService.incrementView(slug);
@@ -227,7 +231,12 @@ export class BlogController {
     @Param('commentId') commentId: string,
     @Body() body: UpdateCommentDto,
   ) {
-    return this.blogService.updateComment(slug, commentId, body.content);
+    return this.blogService.updateComment(
+      slug,
+      commentId,
+      body.content,
+      body.nickname,
+    );
   }
 
   @Delete('posts/:slug/comments/:commentId')

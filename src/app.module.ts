@@ -12,6 +12,7 @@ import { DraftEntity } from './blog/entities/draft.entity';
 
 import { MetadataModule } from './metadata/metadata.module';
 import { PublicModule } from './public/public.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
@@ -37,6 +38,19 @@ import { PublicModule } from './public/public.module';
     }),
     BlogModule,
     MetadataModule,
+    PublicModule,
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60000,
+        limit: 100,
+      },
+      {
+        name: 'view',
+        ttl: 1800000, // 30 minutes
+        limit: 1,
+      },
+    ]),
   ],
 })
-export class AppModule {}
+export class AppModule { }
