@@ -16,6 +16,11 @@ export class PublicController {
 
   constructor(private readonly blogService: BlogService) { }
 
+  @Get()
+  async getHome(@Res() res: Response) {
+    return res.sendFile(this.clientIndexPath);
+  }
+
   @Get('posts/:slug')
   async getPostWithMeta(@Param('slug') slug: string, @Res() res: Response) {
     try {
@@ -103,6 +108,11 @@ ${tags
 
     res.header('Content-Type', 'application/xml');
     return res.send(xml);
+  }
+
+  @Get('*')
+  async fallback(@Res() res: Response) {
+    return res.sendFile(this.clientIndexPath);
   }
 
   private replaceMetaTag(
