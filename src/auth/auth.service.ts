@@ -125,12 +125,17 @@ export class AuthService implements OnModuleInit {
     const accessSecret = process.env.JWT_ACCESS_SECRET ?? 'access-secret';
     const refreshSecret = process.env.JWT_REFRESH_SECRET ?? 'refresh-secret';
 
-    const accessToken = await this.jwtService.signAsync(payload, {
+    const signPayload = {
+      sub: payload.sub,
+      nickname: payload.nickname,
+    };
+
+    const accessToken = await this.jwtService.signAsync(signPayload, {
       expiresIn: Math.floor(this.accessMaxAgeMs / 1000),
       secret: accessSecret,
     });
 
-    const refreshToken = await this.jwtService.signAsync(payload, {
+    const refreshToken = await this.jwtService.signAsync(signPayload, {
       expiresIn: Math.floor(this.refreshMaxAgeMs / 1000),
       secret: refreshSecret,
     });
