@@ -39,7 +39,7 @@ export class BlogService {
     @InjectRepository(DraftEntity)
     private readonly draftRepository: Repository<DraftEntity>,
     private readonly elasticsearchService: ElasticsearchService,
-  ) { }
+  ) {}
 
   async findDrafts(): Promise<DraftEntity[]> {
     return this.draftRepository.find({
@@ -174,9 +174,9 @@ export class BlogService {
       const byTag = tag?.trim() ? post.tags.includes(tag.trim()) : true;
       const byQuery = query?.trim()
         ? [post.title, ...post.tags, this.getPlainText(post.content)]
-          .join(' ')
-          .toLowerCase()
-          .includes(query.trim().toLowerCase())
+            .join(' ')
+            .toLowerCase()
+            .includes(query.trim().toLowerCase())
         : true;
       return byTag && byQuery;
     });

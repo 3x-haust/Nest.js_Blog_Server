@@ -58,7 +58,7 @@ const isUploadFile = (value: unknown): value is UploadFile => {
 @Controller()
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class BlogController {
-  constructor(private readonly blogService: BlogService) { }
+  constructor(private readonly blogService: BlogService) {}
 
   @Get('drafts')
   @UseGuards(AdminAuthGuard)

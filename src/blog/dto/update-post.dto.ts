@@ -1,4 +1,11 @@
-import { IsArray, IsInt, IsOptional, IsString, Min, IsBoolean } from 'class-validator';
+import {
+  IsArray,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  IsBoolean,
+} from 'class-validator';
 
 export class UpdatePostDto {
   @IsOptional()

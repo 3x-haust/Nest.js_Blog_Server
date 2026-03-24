@@ -10,6 +10,8 @@ import { ImageEntity } from './blog/entities/image.entity';
 import { AdminUserEntity } from './auth/entities/admin-user.entity';
 import { DraftEntity } from './blog/entities/draft.entity';
 
+import { MetadataModule } from './metadata/metadata.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -33,6 +35,7 @@ import { DraftEntity } from './blog/entities/draft.entity';
       logging: false,
     }),
     BlogModule,
+    MetadataModule,
   ],
 })
 export class AppModule {}
