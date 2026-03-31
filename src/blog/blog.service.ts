@@ -14,6 +14,7 @@ import { DraftEntity } from './entities/draft.entity';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
+import { SaveDraftDto } from './dto/save-draft.dto';
 
 @Injectable()
 export class BlogService {
@@ -44,6 +45,38 @@ export class BlogService {
       throw new NotFoundException('Draft not found');
     }
     return draft;
+  }
+
+  async saveDraft(dto: SaveDraftDto): Promise<DraftEntity> {
+    if (dto.id) {
+      const existing = await this.draftRepository.findOne({
+        where: { id: dto.id },
+      });
+      if (existing) {
+        existing.title = dto.title ?? existing.title;
+        existing.thumbnail = dto.thumbnail ?? existing.thumbnail;
+        existing.tags = dto.tags ?? existing.tags;
+        existing.content = dto.content ?? existing.content;
+        existing.isPublic = dto.isPublic ?? existing.isPublic;
+        return this.draftRepository.save(existing);
+      }
+    }
+    const draft = this.draftRepository.create({
+      title: dto.title ?? '',
+      thumbnail: dto.thumbnail ?? null,
+      tags: dto.tags ?? [],
+      content: dto.content ?? [],
+      isPublic: dto.isPublic ?? true,
+    });
+    return this.draftRepository.save(draft);
+  }
+
+  async deleteDraft(id: string): Promise<void> {
+    const draft = await this.draftRepository.findOne({ where: { id } });
+    if (!draft) {
+      throw new NotFoundException('Draft not found');
+    }
+    await this.draftRepository.delete({ id });
   }
 
   async findPosts(
