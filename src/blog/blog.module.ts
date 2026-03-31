@@ -6,7 +6,6 @@ import { BlogService } from './blog.service';
 import { PostEntity } from './entities/post.entity';
 import { CommentEntity } from './entities/comment.entity';
 import { HeartEntity } from './entities/heart.entity';
-import { ImageEntity } from './entities/image.entity';
 import { DraftEntity } from './entities/draft.entity';
 import { AuthModule } from '../auth/auth.module';
 
@@ -16,7 +15,6 @@ import { AuthModule } from '../auth/auth.module';
       PostEntity,
       CommentEntity,
       HeartEntity,
-      ImageEntity,
       DraftEntity,
     ]),
     ElasticsearchModule.register({

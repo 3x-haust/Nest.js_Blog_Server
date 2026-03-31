@@ -2,19 +2,14 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ElasticsearchService } from '@nestjs/elasticsearch';
-import { Cron } from '@nestjs/schedule';
-import { promises as fs } from 'fs';
-import { join } from 'path';
 import { Repository } from 'typeorm';
 import { PostEntity } from './entities/post.entity';
 import { CommentEntity } from './entities/comment.entity';
 import { HeartEntity } from './entities/heart.entity';
-import { ImageEntity } from './entities/image.entity';
 import { DraftEntity } from './entities/draft.entity';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
@@ -24,8 +19,6 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 export class BlogService {
   private readonly indexName = 'blog_posts';
   private readonly seriesTagPrefix = 'series:';
-  private readonly logger = new Logger(BlogService.name);
-  private readonly uploadPrefix = '/uploads/images/';
 
   constructor(
     @InjectRepository(PostEntity)
@@ -34,8 +27,6 @@ export class BlogService {
     private readonly commentRepository: Repository<CommentEntity>,
     @InjectRepository(HeartEntity)
     private readonly heartRepository: Repository<HeartEntity>,
-    @InjectRepository(ImageEntity)
-    private readonly imageRepository: Repository<ImageEntity>,
     @InjectRepository(DraftEntity)
     private readonly draftRepository: Repository<DraftEntity>,
     private readonly elasticsearchService: ElasticsearchService,
@@ -53,95 +44,6 @@ export class BlogService {
       throw new NotFoundException('Draft not found');
     }
     return draft;
-  }
-
-  async saveDraft(payload: {
-    id?: string;
-    title?: string;
-    thumbnail?: string;
-    tags?: string[];
-    content?: unknown[];
-    isPublic?: boolean;
-  }): Promise<DraftEntity> {
-    const draft = payload.id
-      ? await this.draftRepository.findOne({ where: { id: payload.id } })
-      : null;
-
-    if (draft) {
-      Object.assign(draft, { ...payload });
-      return this.draftRepository.save(draft);
-    }
-
-    const newDraft = this.draftRepository.create({
-      id: payload.id ?? undefined,
-      title: payload.title ?? '',
-      thumbnail: payload.thumbnail ?? null,
-      tags: payload.tags ?? [],
-      content: payload.content ?? [],
-      isPublic: payload.isPublic ?? true,
-    });
-
-    return this.draftRepository.save(newDraft);
-  }
-
-  async deleteDraft(id: string): Promise<void> {
-    const draft = await this.findDraftById(id);
-    await this.draftRepository.delete({ id: draft.id });
-  }
-
-  async trackUploadedImage(url: string, mimeType: string): Promise<void> {
-    if (!this.isManagedImageUrl(url)) {
-      return;
-    }
-
-    const filename = this.extractFilename(url);
-    if (!filename) {
-      return;
-    }
-
-    const existing = await this.imageRepository.findOne({ where: { url } });
-    if (existing) {
-      return;
-    }
-
-    const image = this.imageRepository.create({ url, filename, mimeType });
-    await this.imageRepository.save(image);
-  }
-
-  @Cron('0 30 3 * * *')
-  async cleanupUnusedImages(): Promise<void> {
-    const graceHours = Number(process.env.IMAGE_CLEANUP_GRACE_HOURS ?? 24);
-    const safeGraceHours = Number.isFinite(graceHours)
-      ? Math.max(1, graceHours)
-      : 24;
-    const threshold = new Date(Date.now() - safeGraceHours * 60 * 60 * 1000);
-
-    const referencedUrls = await this.collectReferencedImageUrls();
-    const images = await this.imageRepository.find();
-    const targets = images.filter(
-      (image) =>
-        !referencedUrls.has(image.url) &&
-        image.createdAt.getTime() < threshold.getTime(),
-    );
-
-    if (!targets.length) {
-      return;
-    }
-
-    let deletedCount = 0;
-    for (const image of targets) {
-      const removed = await this.removeImageFile(image.url);
-      if (!removed) {
-        continue;
-      }
-
-      await this.imageRepository.delete({ id: image.id });
-      deletedCount += 1;
-    }
-
-    if (deletedCount > 0) {
-      this.logger.log(`Cleaned ${deletedCount} unused image(s)`);
-    }
   }
 
   async findPosts(
@@ -279,7 +181,6 @@ export class BlogService {
     });
 
     const saved = await this.postRepository.save(post);
-    await this.ensureReferencedImagesTracked(saved);
     void this.indexPost(saved);
     return saved;
   }
@@ -305,7 +206,6 @@ export class BlogService {
     });
 
     const updated = await this.postRepository.save(post);
-    await this.ensureReferencedImagesTracked(updated);
     void this.indexPost(updated);
     return updated;
   }
@@ -574,133 +474,5 @@ export class BlogService {
 
   private isSeriesTag(tag: string): boolean {
     return tag.toLowerCase().startsWith(this.seriesTagPrefix);
-  }
-
-  private async collectReferencedImageUrls(): Promise<Set<string>> {
-    const urls = new Set<string>();
-
-    const posts = await this.postRepository.find({
-      select: ['thumbnail', 'content'],
-    });
-
-    posts.forEach((post) => {
-      const extracted = this.extractImageUrlsFromPost(
-        post.thumbnail,
-        post.content,
-      );
-      extracted.forEach((url) => urls.add(url));
-    });
-
-    const drafts = await this.draftRepository.find({
-      select: ['content'],
-    });
-
-    drafts.forEach((draft) => {
-      this.walkForImageUrls(draft.content, urls);
-    });
-
-    return urls;
-  }
-
-  private extractImageUrlsFromPost(
-    thumbnail: string | null,
-    content: unknown,
-  ): Set<string> {
-    const urls = new Set<string>();
-
-    if (thumbnail && this.isManagedImageUrl(thumbnail)) {
-      urls.add(thumbnail);
-    }
-
-    this.walkForImageUrls(content, urls);
-
-    return urls;
-  }
-
-  private walkForImageUrls(value: unknown, urls: Set<string>): void {
-    if (typeof value === 'string') {
-      if (this.isManagedImageUrl(value)) {
-        urls.add(value);
-      }
-      this.extractMarkdownImageUrls(value).forEach((url) => urls.add(url));
-      return;
-    }
-
-    if (Array.isArray(value)) {
-      value.forEach((item) => this.walkForImageUrls(item, urls));
-      return;
-    }
-
-    if (value && typeof value === 'object') {
-      Object.values(value).forEach((item) => this.walkForImageUrls(item, urls));
-    }
-  }
-
-  private extractMarkdownImageUrls(text: string): string[] {
-    const matches = text.matchAll(
-      /!\[[^\]]*\]\((\/uploads\/images\/[^)\s]+)\)/g,
-    );
-    return [...matches].map((match) => match[1]);
-  }
-
-  private isManagedImageUrl(url: string): boolean {
-    return url.startsWith(this.uploadPrefix);
-  }
-
-  private extractFilename(url: string): string | null {
-    if (!this.isManagedImageUrl(url)) {
-      return null;
-    }
-    return url.slice(this.uploadPrefix.length).trim() || null;
-  }
-
-  private async ensureReferencedImagesTracked(post: PostEntity): Promise<void> {
-    const referencedUrls = this.extractImageUrlsFromPost(
-      post.thumbnail,
-      post.content,
-    );
-    if (!referencedUrls.size) {
-      return;
-    }
-
-    for (const url of referencedUrls) {
-      const filename = this.extractFilename(url);
-      if (!filename) {
-        continue;
-      }
-
-      const existing = await this.imageRepository.findOne({ where: { url } });
-      if (existing) {
-        continue;
-      }
-
-      const image = this.imageRepository.create({
-        url,
-        filename,
-        mimeType: 'image/webp',
-      });
-      await this.imageRepository.save(image);
-    }
-  }
-
-  private async removeImageFile(url: string): Promise<boolean> {
-    const filename = this.extractFilename(url);
-    if (!filename) {
-      return false;
-    }
-
-    const filePath = join(process.cwd(), 'uploads', 'images', filename);
-
-    try {
-      await fs.unlink(filePath);
-      return true;
-    } catch {
-      try {
-        await fs.access(filePath);
-        return false;
-      } catch {
-        return true;
-      }
-    }
   }
 }

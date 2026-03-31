@@ -297,7 +297,6 @@ export class BlogController {
     }
 
     const url = `/uploads/images/${filename}`;
-    await this.blogService.trackUploadedImage(url, file.mimetype);
     return { url };
   }
 }
